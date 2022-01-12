@@ -4,11 +4,16 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import firefliesVertexShader from "./shaders/fireflies/vertex.glsl";
+import firefliesFragmentShader from "./shaders/fireflies/fragment.glsl";
+import portalVertexShader from "./shaders/portal/vertex.glsl";
+import portalFragmentShader from "./shaders/portal/fragment.glsl";
 
 /**
  * Base
  */
 // Debug
+const debugObject = {};
 const gui = new dat.GUI({
     width: 400,
 });
@@ -52,17 +57,22 @@ const poleLampMaterial = new THREE.MeshBasicMaterial({
 });
 
 const portalMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        uTime: { value: 0.0 },
+        uColorStart: { value: new THREE.Color(0x2f075f) },
+        uColorEnd: { value: new THREE.Color(0xa2ade2) },
+    },
+    transparent: true,
     side: THREE.DoubleSide,
-    vertexShader: `
-    void main() {
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-    `,
-    fragmentShader: `
-    void main() {
-        gl_FragColor = vec4(0.8, 0.8, 1.0, 1.0);
-    }
-    `,
+    vertexShader: portalVertexShader,
+    fragmentShader: portalFragmentShader,
+});
+
+gui.addColor(portalMaterial.uniforms.uColorStart, "value").onChange((value) => {
+    portalMaterial.uniforms.uColorStart.value = new THREE.Color(value);
+});
+gui.addColor(portalMaterial.uniforms.uColorEnd, "value").onChange((value) => {
+    portalMaterial.uniforms.uColorEnd.value = new THREE.Color(value);
 });
 
 /**
@@ -92,6 +102,55 @@ gltfLoader.load("portal.glb", (gltf) => {
 });
 
 /**
+ * Fireflies
+ */
+
+const firefliesGeometry = new THREE.BufferGeometry();
+const firefliesCount = 50;
+const positions = new Float32Array(firefliesCount * 3);
+const scale = new Float32Array(firefliesCount);
+
+for (let i = 0; i < firefliesCount; i++) {
+    positions[i * 3] = (Math.random() - 0.5) * 6;
+    positions[i * 3 + 1] = Math.random() * 2;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 6;
+
+    scale[i] = Math.random();
+}
+
+firefliesGeometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3)
+);
+firefliesGeometry.setAttribute(
+    "aScale",
+    new THREE.Float32BufferAttribute(scale, 1)
+);
+
+// const firefliesMaterial = new THREE.PointsMaterial({
+//     size: 0.1,
+//     sizeAttenuation: true,
+//     color: 0xffd894,
+// });
+const firefliesMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+        uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+        uSize: { value: 100.0 },
+        uTime: { value: 0.0 },
+    },
+    vertexShader: firefliesVertexShader,
+    fragmentShader: firefliesFragmentShader,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+});
+
+gui.add(firefliesMaterial.uniforms.uSize, "value", 0, 100);
+
+const fireflies = new THREE.Points(firefliesGeometry, firefliesMaterial);
+scene.add(fireflies);
+
+/**
  * Sizes
  */
 const sizes = {
@@ -111,6 +170,10 @@ window.addEventListener("resize", () => {
     // Update renderer
     renderer.setSize(sizes.width, sizes.height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    firefliesMaterial.uniforms.uPixelRatio.value = Math.min(
+        window.devicePixelRatio,
+        2
+    );
 });
 
 /**
@@ -143,6 +206,12 @@ renderer.setSize(sizes.width, sizes.height);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputEncoding = THREE.sRGBEncoding;
 
+debugObject.clearColor = "#1f2728";
+renderer.setClearColor(debugObject.clearColor);
+gui.addColor(debugObject, "clearColor").onChange(() => {
+    renderer.setClearColor(debugObject.clearColor);
+});
+
 /**
  * Animate
  */
@@ -151,6 +220,8 @@ const clock = new THREE.Clock();
 const tick = () => {
     const elapsedTime = clock.getElapsedTime();
 
+    portalMaterial.uniforms.uTime.value = elapsedTime;
+    firefliesMaterial.uniforms.uTime.value = elapsedTime;
     // Update controls
     controls.update();
 
